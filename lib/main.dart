@@ -9,15 +9,33 @@ import 'package:notifspy/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await HiveService.init();
+
+  try {
+    await HiveService.init();
+  } catch (e) {
+    debugPrint('[NotifSpy] Hive init error: $e');
+  }
 
   final themeService = ThemeService();
-  await themeService.init();
+  try {
+    await themeService.init();
+  } catch (e) {
+    debugPrint('[NotifSpy] Theme init error: $e');
+  }
 
   final listenerService = NotificationListenerService();
-  await listenerService.init();
+  try {
+    await listenerService.init();
+  } catch (e) {
+    debugPrint('[NotifSpy] Listener init error: $e');
+  }
 
-  final hasPermission = await listenerService.isPermissionGranted();
+  bool hasPermission = false;
+  try {
+    hasPermission = await listenerService.isPermissionGranted();
+  } catch (e) {
+    debugPrint('[NotifSpy] Permission check error: $e');
+  }
 
   runApp(NotifSpyApp(themeService: themeService, hasPermission: hasPermission));
 }

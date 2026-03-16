@@ -164,8 +164,9 @@ class NotificationListenerService {
 
   // ===== Keyword Alerts =====
   List<String> get keywords {
-    final raw = _settingsBox?.get('keywords', defaultValue: <dynamic>[]) as List<dynamic>;
-    return raw.cast<String>();
+    final raw = _settingsBox?.get('keywords');
+    if (raw == null) return [];
+    return (raw as List<dynamic>).cast<String>();
   }
 
   set keywords(List<String> value) => _settingsBox?.put('keywords', value);
@@ -198,8 +199,9 @@ class NotificationListenerService {
 
   // ===== Contact Watchlist =====
   List<String> get watchedContacts {
-    final raw = _settingsBox?.get('watchedContacts', defaultValue: <dynamic>[]) as List<dynamic>;
-    return raw.cast<String>();
+    final raw = _settingsBox?.get('watchedContacts');
+    if (raw == null) return [];
+    return (raw as List<dynamic>).cast<String>();
   }
 
   set watchedContacts(List<String> value) => _settingsBox?.put('watchedContacts', value);
@@ -228,8 +230,9 @@ class NotificationListenerService {
 
   // ===== App Blacklist =====
   List<String> get blacklistedApps {
-    final raw = _settingsBox?.get('blacklistedApps', defaultValue: <dynamic>[]) as List<dynamic>;
-    return raw.cast<String>();
+    final raw = _settingsBox?.get('blacklistedApps');
+    if (raw == null) return [];
+    return (raw as List<dynamic>).cast<String>();
   }
 
   set blacklistedApps(List<String> value) => _settingsBox?.put('blacklistedApps', value);
@@ -249,11 +252,11 @@ class NotificationListenerService {
   }
 
   // ===== Auto Cleanup =====
-  int get autoCleanupDays => _settingsBox?.get('autoCleanupDays', defaultValue: 0) as int;
+  int get autoCleanupDays => (_settingsBox?.get('autoCleanupDays') as int?) ?? 0;
   set autoCleanupDays(int value) => _settingsBox?.put('autoCleanupDays', value);
 
-  int get nightStartHour => _settingsBox?.get('nightStartHour', defaultValue: 23) as int;
-  int get nightEndHour => _settingsBox?.get('nightEndHour', defaultValue: 7) as int;
+  int get nightStartHour => (_settingsBox?.get('nightStartHour') as int?) ?? 23;
+  int get nightEndHour => (_settingsBox?.get('nightEndHour') as int?) ?? 7;
   set nightStartHour(int value) => _settingsBox?.put('nightStartHour', value);
   set nightEndHour(int value) => _settingsBox?.put('nightEndHour', value);
 
