@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:notifspy/models/captured_notification.dart';
 import 'package:notifspy/services/notification_listener_service.dart';
-import 'package:notifspy/screens/notification_detail_screen.dart';
 import 'package:notifspy/screens/contact_thread_screen.dart';
 import 'package:notifspy/widgets/empty_state.dart';
 import 'package:notifspy/theme/app_theme.dart';

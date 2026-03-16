@@ -5,6 +5,13 @@ import 'package:notifspy/services/notification_listener_service.dart';
 import 'package:notifspy/screens/notification_detail_screen.dart';
 import 'package:notifspy/screens/app_filter_screen.dart';
 import 'package:notifspy/screens/settings_screen.dart';
+import 'package:notifspy/screens/statistics_screen.dart';
+import 'package:notifspy/screens/favorites_screen.dart';
+import 'package:notifspy/screens/night_summary_screen.dart';
+import 'package:notifspy/screens/keyword_alerts_screen.dart';
+import 'package:notifspy/screens/watchlist_screen.dart';
+import 'package:notifspy/screens/export_screen.dart';
+import 'package:notifspy/screens/blacklist_screen.dart';
 import 'package:notifspy/theme/app_theme.dart';
 import 'package:notifspy/widgets/notification_tile.dart';
 import 'package:notifspy/widgets/empty_state.dart';
@@ -19,7 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _service = NotificationListenerService();
-  String? _selectedApp; // null = all, 'deleted' = deleted only, else = packageName
+  String? _selectedApp;
   String _searchQuery = '';
   bool _searchActive = false;
   final _searchController = TextEditingController();
@@ -28,6 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _removedSub;
   StreamSubscription? _clearedSub;
 
+  // Date range filter
+  DateTimeRange? _dateRange;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _postedSub = _service.onNotification.listen((_) => _loadNotifications());
     _removedSub = _service.onNotificationRemoved.listen((_) => _loadNotifications());
     _clearedSub = _service.onCleared.listen((_) => _loadNotifications());
+    // Run auto-cleanup on start
+    _service.runAutoCleanup();
   }
 
   @override
@@ -59,8 +71,19 @@ class _HomeScreenState extends State<HomeScreen> {
       list = all;
     } else if (_selectedApp == '_deleted') {
       list = all.where((n) => n.isRemoved).toList();
+    } else if (_selectedApp == '_ghost') {
+      list = all.where((n) => n.isGhostDelete).toList();
+    } else if (_selectedApp == '_favorites') {
+      list = all.where((n) => n.isFavorite).toList();
     } else {
       list = all.where((n) => n.packageName == _selectedApp).toList();
+    }
+
+    if (_dateRange != null) {
+      list = list.where((n) =>
+        n.timestamp.isAfter(_dateRange!.start) &&
+        n.timestamp.isBefore(_dateRange!.end.add(const Duration(days: 1)))
+      ).toList();
     }
 
     if (_searchQuery.isNotEmpty) {
@@ -75,20 +98,22 @@ class _HomeScreenState extends State<HomeScreen> {
     return list;
   }
 
-  /// Build dynamic filter chips from the apps that actually sent notifications
   List<_AppFilter> _buildDynamicFilters() {
     final all = _service.getAllNotifications();
     final appCounts = <String, int>{};
     final appNames = <String, String>{};
     int deletedCount = 0;
+    int ghostCount = 0;
+    int favCount = 0;
 
     for (final n in all) {
       appCounts[n.packageName] = (appCounts[n.packageName] ?? 0) + 1;
       appNames[n.packageName] = n.appName;
       if (n.isRemoved) deletedCount++;
+      if (n.isGhostDelete) ghostCount++;
+      if (n.isFavorite) favCount++;
     }
 
-    // Sort apps by count descending
     final sortedApps = appCounts.keys.toList()
       ..sort((a, b) => appCounts[b]!.compareTo(appCounts[a]!));
 
@@ -96,8 +121,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _AppFilter(id: null, label: 'All', count: all.length, icon: Icons.all_inclusive),
     ];
 
-    // Top apps as filter chips
-    for (final pkg in sortedApps.take(6)) {
+    if (favCount > 0) {
+      filters.add(_AppFilter(id: '_favorites', label: 'Starred', count: favCount, icon: Icons.star, color: Colors.amber));
+    }
+
+    for (final pkg in sortedApps.take(5)) {
       filters.add(_AppFilter(
         id: pkg,
         label: _shortAppName(appNames[pkg] ?? pkg),
@@ -107,14 +135,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
     }
 
+    if (ghostCount > 0) {
+      filters.add(_AppFilter(id: '_ghost', label: 'Ghost', count: ghostCount, icon: Icons.visibility_off, color: Colors.orange));
+    }
+
     if (deletedCount > 0) {
-      filters.add(_AppFilter(
-        id: '_deleted',
-        label: 'Deleted',
-        count: deletedCount,
-        icon: Icons.delete_outline,
-        color: AppTheme.deletedRed,
-      ));
+      filters.add(_AppFilter(id: '_deleted', label: 'Deleted', count: deletedCount, icon: Icons.delete_outline, color: AppTheme.deletedRed));
     }
 
     return filters;
@@ -149,6 +175,19 @@ class _HomeScreenState extends State<HomeScreen> {
     return AppTheme.spyPurple;
   }
 
+  void _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now(),
+      initialDateRange: _dateRange,
+    );
+    if (picked != null) {
+      setState(() => _dateRange = picked);
+      _loadNotifications();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -162,14 +201,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search notifications...',
-                  border: InputBorder.none,
-                ),
-                onChanged: (v) {
-                  _searchQuery = v;
-                  _loadNotifications();
-                },
+                decoration: const InputDecoration(hintText: 'Search notifications...', border: InputBorder.none),
+                onChanged: (v) { _searchQuery = v; _loadNotifications(); },
               )
             : const Text('NotifSpy', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
@@ -178,25 +211,45 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               setState(() {
                 _searchActive = !_searchActive;
-                if (!_searchActive) {
-                  _searchQuery = '';
-                  _searchController.clear();
-                  _loadNotifications();
-                }
+                if (!_searchActive) { _searchQuery = ''; _searchController.clear(); _loadNotifications(); }
               });
             },
           ),
           IconButton(
-            icon: const Icon(Icons.apps_rounded),
-            tooltip: 'Browse by App',
-            onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const AppFilterScreen()));
-              _loadNotifications();
-            },
+            icon: Icon(Icons.date_range, color: _dateRange != null ? AppTheme.accentCyan : null),
+            tooltip: 'Filter by date',
+            onPressed: _pickDateRange,
           ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          PopupMenuButton(
+            icon: const Icon(Icons.more_vert),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'apps', child: ListTile(leading: Icon(Icons.apps_rounded), title: Text('Browse Apps'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'stats', child: ListTile(leading: Icon(Icons.bar_chart), title: Text('Statistics'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'night', child: ListTile(leading: Icon(Icons.nightlight_round), title: Text('Night Summary'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'keywords', child: ListTile(leading: Icon(Icons.search), title: Text('Keyword Alerts'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'watchlist', child: ListTile(leading: Icon(Icons.visibility), title: Text('Watchlist'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'favorites', child: ListTile(leading: Icon(Icons.star), title: Text('Favorites'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.save_alt), title: Text('Export & Backup'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'blacklist', child: ListTile(leading: Icon(Icons.block), title: Text('App Blacklist'), dense: true, contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'settings', child: ListTile(leading: Icon(Icons.settings), title: Text('Settings'), dense: true, contentPadding: EdgeInsets.zero)),
+            ],
+            onSelected: (v) {
+              Widget? screen;
+              switch (v) {
+                case 'apps': screen = const AppFilterScreen();
+                case 'stats': screen = const StatisticsScreen();
+                case 'night': screen = const NightSummaryScreen();
+                case 'keywords': screen = const KeywordAlertsScreen();
+                case 'watchlist': screen = const WatchlistScreen();
+                case 'favorites': screen = const FavoritesScreen();
+                case 'export': screen = const ExportScreen();
+                case 'blacklist': screen = const BlacklistScreen();
+                case 'settings': screen = const SettingsScreen();
+              }
+              if (screen != null) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => screen!)).then((_) => _loadNotifications());
+              }
+            },
           ),
         ],
       ),
@@ -207,12 +260,10 @@ class _HomeScreenState extends State<HomeScreen> {
             margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.spyPurple.withValues(alpha: 0.15),
-                  AppTheme.accentCyan.withValues(alpha: 0.08),
-                ],
-              ),
+              gradient: LinearGradient(colors: [
+                AppTheme.spyPurple.withValues(alpha: 0.15),
+                AppTheme.accentCyan.withValues(alpha: 0.08),
+              ]),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: AppTheme.spyPurple.withValues(alpha: 0.2)),
             ),
@@ -226,6 +277,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+
+          // Date range indicator
+          if (_dateRange != null)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: Chip(
+                avatar: const Icon(Icons.date_range, size: 16),
+                label: Text('${DateFormat('MMM d').format(_dateRange!.start)} – ${DateFormat('MMM d').format(_dateRange!.end)}', style: const TextStyle(fontSize: 12)),
+                onDeleted: () { setState(() => _dateRange = null); _loadNotifications(); },
+              ),
+            ),
 
           // Dynamic filter chips
           SizedBox(
@@ -242,10 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: Text('${f.label} ${f.count}', style: const TextStyle(fontSize: 12)),
                   avatar: Icon(f.icon, size: 16, color: selected ? Colors.white : (f.color ?? cs.onSurfaceVariant)),
                   selected: selected,
-                  onSelected: (_) {
-                    setState(() => _selectedApp = f.id);
-                    _loadNotifications();
-                  },
+                  onSelected: (_) { setState(() => _selectedApp = f.id); _loadNotifications(); },
                   selectedColor: f.color ?? cs.primary,
                   showCheckmark: false,
                   labelStyle: TextStyle(color: selected ? Colors.white : null),
@@ -260,13 +319,12 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: _notifications.isEmpty
                 ? EmptyState(
-                    icon: _selectedApp == '_deleted' ? Icons.delete_sweep : Icons.notifications_off,
-                    title: _selectedApp == '_deleted'
-                        ? 'No deleted notifications yet'
-                        : 'No notifications captured',
-                    subtitle: _selectedApp == null
-                        ? 'Notifications will appear here as they arrive'
-                        : 'Try changing the filter',
+                    icon: _selectedApp == '_deleted' ? Icons.delete_sweep : _selectedApp == '_ghost' ? Icons.visibility_off : Icons.notifications_off,
+                    title: _selectedApp == '_deleted' ? 'No deleted notifications'
+                         : _selectedApp == '_ghost' ? 'No ghost deletes detected'
+                         : _selectedApp == '_favorites' ? 'No favorites yet'
+                         : 'No notifications captured',
+                    subtitle: _selectedApp == null ? 'Notifications will appear here as they arrive' : 'Try changing the filter',
                   )
                 : RefreshIndicator(
                     onRefresh: () async => _loadNotifications(),
@@ -275,8 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       itemBuilder: (context, index) {
                         final notif = _notifications[index];
-                        final showDateHeader = index == 0 ||
-                            !_isSameDay(notif.timestamp, _notifications[index - 1].timestamp);
+                        final showDateHeader = index == 0 || !_isSameDay(notif.timestamp, _notifications[index - 1].timestamp);
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -285,20 +342,23 @@ class _HomeScreenState extends State<HomeScreen> {
                                 padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
                                 child: Text(
                                   _dateHeader(notif.timestamp),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: cs.onSurfaceVariant,
-                                    letterSpacing: 0.5,
-                                  ),
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant, letterSpacing: 0.5),
                                 ),
                               ),
                             NotificationTile(
                               notification: notif,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => NotificationDetailScreen(notification: notif)),
-                              ),
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationDetailScreen(notification: notif))),
+                              onLongPress: () async {
+                                await _service.toggleFavorite(notif.id);
+                                _loadNotifications();
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(notif.isFavorite ? 'Added to favorites' : 'Removed from favorites'),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
                               onDismiss: () async {
                                 await _service.deleteNotification(notif.id);
                                 _loadNotifications();
@@ -352,6 +412,5 @@ class _AppFilter {
   final int count;
   final IconData icon;
   final Color? color;
-
   _AppFilter({required this.id, required this.label, required this.count, required this.icon, this.color});
 }

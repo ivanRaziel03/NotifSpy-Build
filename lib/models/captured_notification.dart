@@ -43,7 +43,34 @@ class CapturedNotification extends HiveObject {
   @HiveField(12)
   String? conversationTitle;
 
+  @HiveField(13)
+  bool isFavorite = false;
+
+  @HiveField(14)
+  String? mediaType;
+
+  @HiveField(15)
+  bool isGhostDelete = false;
+
   bool get isWhatsApp => packageName == 'com.whatsapp' || packageName == 'com.whatsapp.w4b';
   bool get isTelegram => packageName == 'org.telegram.messenger';
   bool get isMessaging => isWhatsApp || isTelegram || packageName.contains('sms') || packageName.contains('messenger');
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'packageName': packageName,
+    'appName': appName,
+    'title': title,
+    'text': text,
+    'timestamp': timestamp.toIso8601String(),
+    'isRemoved': isRemoved,
+    'removedAt': removedAt?.toIso8601String(),
+    'bigText': bigText,
+    'subText': subText,
+    'category': category,
+    'conversationTitle': conversationTitle,
+    'isFavorite': isFavorite,
+    'mediaType': mediaType,
+    'isGhostDelete': isGhostDelete,
+  };
 }

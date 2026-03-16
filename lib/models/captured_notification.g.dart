@@ -29,13 +29,16 @@ class CapturedNotificationAdapter extends TypeAdapter<CapturedNotification> {
       ..subText = fields[9] as String?
       ..category = fields[10] as String?
       ..isGroupSummary = fields[11] as bool
-      ..conversationTitle = fields[12] as String?;
+      ..conversationTitle = fields[12] as String?
+      ..isFavorite = fields[13] as bool
+      ..mediaType = fields[14] as String?
+      ..isGhostDelete = fields[15] as bool;
   }
 
   @override
   void write(BinaryWriter writer, CapturedNotification obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -61,7 +64,13 @@ class CapturedNotificationAdapter extends TypeAdapter<CapturedNotification> {
       ..writeByte(11)
       ..write(obj.isGroupSummary)
       ..writeByte(12)
-      ..write(obj.conversationTitle);
+      ..write(obj.conversationTitle)
+      ..writeByte(13)
+      ..write(obj.isFavorite)
+      ..writeByte(14)
+      ..write(obj.mediaType)
+      ..writeByte(15)
+      ..write(obj.isGhostDelete);
   }
 
   @override
