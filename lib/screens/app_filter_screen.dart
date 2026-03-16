@@ -45,36 +45,46 @@ class AppFilterScreen extends StatelessWidget {
                 final name = names[pkg] ?? pkg;
                 final count = appCounts[pkg] ?? 0;
                 final deleted = appDeletedCounts[pkg] ?? 0;
-                final isWhatsApp = pkg == 'com.whatsapp' || pkg == 'com.whatsapp.w4b';
-                final isTelegram = pkg == 'org.telegram.messenger';
+                final color = _colorForPackage(pkg);
 
-                final color = isWhatsApp
-                    ? AppTheme.whatsAppGreen
-                    : isTelegram
-                        ? AppTheme.telegramBlue
-                        : cs.primary;
+                // Count unique contacts
+                final contacts = <String>{};
+                for (final n in service.getByApp(pkg)) {
+                  if (n.title.isNotEmpty) contacts.add(n.title);
+                }
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: CircleAvatar(
                       backgroundColor: color.withValues(alpha: 0.15),
-                      child: Icon(
-                        isWhatsApp ? Icons.chat : isTelegram ? Icons.send : Icons.apps,
-                        color: color,
-                        size: 20,
-                      ),
+                      child: Icon(_iconForPackage(pkg), color: color, size: 20),
                     ),
                     title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(pkg, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                    subtitle: Row(
+                      children: [
+                        Text('$count msgs', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                        if (contacts.isNotEmpty) ...[
+                          Text(' · ', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                          Text('${contacts.length} contacts', style: TextStyle(fontSize: 11, color: color)),
+                        ],
+                      ],
+                    ),
                     trailing: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text('$count', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: cs.onSurface)),
                         if (deleted > 0)
-                          Text('$deleted deleted',
-                            style: TextStyle(fontSize: 11, color: AppTheme.deletedRed, fontWeight: FontWeight.w500)),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.delete_forever, size: 11, color: AppTheme.deletedRed),
+                              const SizedBox(width: 2),
+                              Text('$deleted',
+                                style: TextStyle(fontSize: 11, color: AppTheme.deletedRed, fontWeight: FontWeight.w500)),
+                            ],
+                          ),
                       ],
                     ),
                     onTap: () => Navigator.push(
@@ -86,5 +96,28 @@ class AppFilterScreen extends StatelessWidget {
               },
             ),
     );
+  }
+
+  Color _colorForPackage(String pkg) {
+    if (pkg.contains('whatsapp')) return AppTheme.whatsAppGreen;
+    if (pkg.contains('telegram')) return AppTheme.telegramBlue;
+    if (pkg.contains('instagram')) return const Color(0xFFE1306C);
+    if (pkg.contains('twitter') || pkg.contains('x.android')) return const Color(0xFF1DA1F2);
+    if (pkg.contains('youtube')) return const Color(0xFFFF0000);
+    if (pkg.contains('mail') || pkg.contains('gmail')) return const Color(0xFFEA4335);
+    return AppTheme.spyPurple;
+  }
+
+  IconData _iconForPackage(String pkg) {
+    if (pkg.contains('whatsapp')) return Icons.chat;
+    if (pkg.contains('telegram')) return Icons.send;
+    if (pkg.contains('sms') || pkg.contains('messenger') || pkg.contains('message')) return Icons.message;
+    if (pkg.contains('mail') || pkg.contains('gmail')) return Icons.email;
+    if (pkg.contains('instagram')) return Icons.camera_alt;
+    if (pkg.contains('twitter') || pkg.contains('x.android')) return Icons.tag;
+    if (pkg.contains('youtube')) return Icons.play_circle;
+    if (pkg.contains('chrome') || pkg.contains('browser')) return Icons.language;
+    if (pkg.contains('phone') || pkg.contains('dialer')) return Icons.phone;
+    return Icons.notifications;
   }
 }

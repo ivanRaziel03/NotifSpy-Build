@@ -22,6 +22,9 @@ class NotificationListenerService {
   final _removedController = StreamController<String>.broadcast();
   Stream<String> get onNotificationRemoved => _removedController.stream;
 
+  final _clearedController = StreamController<void>.broadcast();
+  Stream<void> get onCleared => _clearedController.stream;
+
   Future<void> init() async {
     _box = Hive.box<CapturedNotification>('notifications');
     _listenToNativeEvents();
@@ -151,6 +154,7 @@ class NotificationListenerService {
 
   Future<void> clearAll() async {
     await _box?.clear();
+    _clearedController.add(null);
   }
 
   Future<void> deleteNotification(String id) async {
@@ -164,5 +168,6 @@ class NotificationListenerService {
     _subscription?.cancel();
     _notificationController.close();
     _removedController.close();
+    _clearedController.close();
   }
 }

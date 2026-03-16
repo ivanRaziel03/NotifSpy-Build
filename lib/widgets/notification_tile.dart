@@ -19,6 +19,7 @@ class NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final appColor = _getAppColor();
+    final isDeleted = notification.isRemoved;
 
     return Dismissible(
       key: Key(notification.id),
@@ -36,6 +37,15 @@ class NotificationTile extends StatelessWidget {
       ),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 3),
+        color: isDeleted
+            ? AppTheme.deletedRed.withValues(alpha: 0.08)
+            : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: isDeleted
+              ? BorderSide(color: AppTheme.deletedRed.withValues(alpha: 0.25), width: 1)
+              : BorderSide.none,
+        ),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
@@ -44,11 +54,35 @@ class NotificationTile extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // App icon
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: appColor.withValues(alpha: 0.12),
-                  child: Icon(_getAppIcon(), size: 20, color: appColor),
+                // App icon with deleted overlay
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: appColor.withValues(alpha: 0.12),
+                      child: Icon(_getAppIcon(), size: 20, color: appColor),
+                    ),
+                    if (isDeleted)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: AppTheme.deletedRed,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isDeleted
+                                  ? AppTheme.deletedRed.withValues(alpha: 0.08)
+                                  : cs.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(Icons.close, size: 8, color: Colors.white),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 12),
                 // Content
@@ -58,10 +92,19 @@ class NotificationTile extends StatelessWidget {
                     children: [
                       Row(
                         children: [
+                          if (isDeleted)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Icon(Icons.delete_forever, size: 14, color: AppTheme.deletedRed),
+                            ),
                           Expanded(
                             child: Text(
                               notification.title.isNotEmpty ? notification.title : notification.appName,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: isDeleted ? AppTheme.deletedRed : null,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -84,26 +127,30 @@ class NotificationTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         notification.text,
-                        style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.3),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDeleted ? AppTheme.deletedRed.withValues(alpha: 0.7) : cs.onSurfaceVariant,
+                          height: 1.3,
+                          fontStyle: isDeleted ? FontStyle.italic : null,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (isDeleted && notification.removedAt != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Deleted ${_formatTimeDiff(notification.removedAt!)}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.deletedRed.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                // Deleted indicator
-                if (notification.isRemoved)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6, top: 2),
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppTheme.deletedRed,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -115,14 +162,25 @@ class NotificationTile extends StatelessWidget {
   Color _getAppColor() {
     if (notification.isWhatsApp) return AppTheme.whatsAppGreen;
     if (notification.isTelegram) return AppTheme.telegramBlue;
+    final pkg = notification.packageName;
+    if (pkg.contains('instagram')) return const Color(0xFFE1306C);
+    if (pkg.contains('twitter') || pkg.contains('x.android')) return const Color(0xFF1DA1F2);
+    if (pkg.contains('youtube')) return const Color(0xFFFF0000);
+    if (pkg.contains('mail') || pkg.contains('gmail')) return const Color(0xFFEA4335);
     return AppTheme.spyPurple;
   }
 
   IconData _getAppIcon() {
     if (notification.isWhatsApp) return Icons.chat;
     if (notification.isTelegram) return Icons.send;
-    if (notification.packageName.contains('sms') || notification.packageName.contains('messenger')) return Icons.message;
-    if (notification.packageName.contains('mail') || notification.packageName.contains('gmail')) return Icons.email;
+    final pkg = notification.packageName;
+    if (pkg.contains('sms') || pkg.contains('messenger') || pkg.contains('message')) return Icons.message;
+    if (pkg.contains('mail') || pkg.contains('gmail')) return Icons.email;
+    if (pkg.contains('instagram')) return Icons.camera_alt;
+    if (pkg.contains('twitter') || pkg.contains('x.android')) return Icons.tag;
+    if (pkg.contains('youtube')) return Icons.play_circle;
+    if (pkg.contains('chrome') || pkg.contains('browser')) return Icons.language;
+    if (pkg.contains('phone') || pkg.contains('dialer')) return Icons.phone;
     return Icons.notifications;
   }
 
@@ -133,5 +191,14 @@ class NotificationTile extends StatelessWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m';
     if (diff.inHours < 24) return DateFormat('HH:mm').format(dt);
     return DateFormat('d MMM').format(dt);
+  }
+
+  String _formatTimeDiff(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return DateFormat('d MMM, HH:mm').format(dt);
   }
 }

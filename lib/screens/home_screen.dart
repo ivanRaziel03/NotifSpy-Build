@@ -10,8 +10,6 @@ import 'package:notifspy/widgets/notification_tile.dart';
 import 'package:notifspy/widgets/empty_state.dart';
 import 'package:intl/intl.dart';
 
-enum NotifFilter { all, whatsapp, deleted, messaging }
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -21,13 +19,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _service = NotificationListenerService();
-  NotifFilter _filter = NotifFilter.all;
+  String? _selectedApp; // null = all, 'deleted' = deleted only, else = packageName
   String _searchQuery = '';
   bool _searchActive = false;
   final _searchController = TextEditingController();
   List<CapturedNotification> _notifications = [];
   StreamSubscription? _postedSub;
   StreamSubscription? _removedSub;
+  StreamSubscription? _clearedSub;
 
   @override
   void initState() {
@@ -35,12 +34,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadNotifications();
     _postedSub = _service.onNotification.listen((_) => _loadNotifications());
     _removedSub = _service.onNotificationRemoved.listen((_) => _loadNotifications());
+    _clearedSub = _service.onCleared.listen((_) => _loadNotifications());
   }
 
   @override
   void dispose() {
     _postedSub?.cancel();
     _removedSub?.cancel();
+    _clearedSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -53,12 +54,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<CapturedNotification> _applyFilter(List<CapturedNotification> all) {
-    var list = switch (_filter) {
-      NotifFilter.all => all,
-      NotifFilter.whatsapp => all.where((n) => n.isWhatsApp).toList(),
-      NotifFilter.deleted => all.where((n) => n.isRemoved).toList(),
-      NotifFilter.messaging => all.where((n) => n.isMessaging).toList(),
-    };
+    List<CapturedNotification> list;
+    if (_selectedApp == null) {
+      list = all;
+    } else if (_selectedApp == '_deleted') {
+      list = all.where((n) => n.isRemoved).toList();
+    } else {
+      list = all.where((n) => n.packageName == _selectedApp).toList();
+    }
 
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
@@ -72,11 +75,86 @@ class _HomeScreenState extends State<HomeScreen> {
     return list;
   }
 
+  /// Build dynamic filter chips from the apps that actually sent notifications
+  List<_AppFilter> _buildDynamicFilters() {
+    final all = _service.getAllNotifications();
+    final appCounts = <String, int>{};
+    final appNames = <String, String>{};
+    int deletedCount = 0;
+
+    for (final n in all) {
+      appCounts[n.packageName] = (appCounts[n.packageName] ?? 0) + 1;
+      appNames[n.packageName] = n.appName;
+      if (n.isRemoved) deletedCount++;
+    }
+
+    // Sort apps by count descending
+    final sortedApps = appCounts.keys.toList()
+      ..sort((a, b) => appCounts[b]!.compareTo(appCounts[a]!));
+
+    final filters = <_AppFilter>[
+      _AppFilter(id: null, label: 'All', count: all.length, icon: Icons.all_inclusive),
+    ];
+
+    // Top apps as filter chips
+    for (final pkg in sortedApps.take(6)) {
+      filters.add(_AppFilter(
+        id: pkg,
+        label: _shortAppName(appNames[pkg] ?? pkg),
+        count: appCounts[pkg] ?? 0,
+        icon: _iconForPackage(pkg),
+        color: _colorForPackage(pkg),
+      ));
+    }
+
+    if (deletedCount > 0) {
+      filters.add(_AppFilter(
+        id: '_deleted',
+        label: 'Deleted',
+        count: deletedCount,
+        icon: Icons.delete_outline,
+        color: AppTheme.deletedRed,
+      ));
+    }
+
+    return filters;
+  }
+
+  String _shortAppName(String name) {
+    if (name.length <= 12) return name;
+    if (name.contains(' ')) return name.split(' ').first;
+    return name.substring(0, 10);
+  }
+
+  IconData _iconForPackage(String pkg) {
+    if (pkg.contains('whatsapp')) return Icons.chat;
+    if (pkg.contains('telegram')) return Icons.send;
+    if (pkg.contains('sms') || pkg.contains('messenger') || pkg.contains('message')) return Icons.message;
+    if (pkg.contains('mail') || pkg.contains('gmail')) return Icons.email;
+    if (pkg.contains('instagram')) return Icons.camera_alt;
+    if (pkg.contains('twitter') || pkg.contains('x.android')) return Icons.tag;
+    if (pkg.contains('youtube')) return Icons.play_circle;
+    if (pkg.contains('chrome') || pkg.contains('browser')) return Icons.language;
+    if (pkg.contains('phone') || pkg.contains('dialer')) return Icons.phone;
+    return Icons.notifications;
+  }
+
+  Color _colorForPackage(String pkg) {
+    if (pkg.contains('whatsapp')) return AppTheme.whatsAppGreen;
+    if (pkg.contains('telegram')) return AppTheme.telegramBlue;
+    if (pkg.contains('instagram')) return const Color(0xFFE1306C);
+    if (pkg.contains('twitter') || pkg.contains('x.android')) return const Color(0xFF1DA1F2);
+    if (pkg.contains('youtube')) return const Color(0xFFFF0000);
+    if (pkg.contains('mail') || pkg.contains('gmail')) return const Color(0xFFEA4335);
+    return AppTheme.spyPurple;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final deletedCount = _service.deletedCount;
     final totalCount = _service.totalCount;
+    final dynamicFilters = _buildDynamicFilters();
 
     return Scaffold(
       appBar: AppBar(
@@ -110,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.apps_rounded),
-            tooltip: 'Filter by App',
+            tooltip: 'Browse by App',
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const AppFilterScreen()));
               _loadNotifications();
@@ -149,21 +227,31 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Filter chips
+          // Dynamic filter chips
           SizedBox(
             height: 44,
-            child: ListView(
+            child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                _filterChip('All', NotifFilter.all, Icons.all_inclusive, cs),
-                const SizedBox(width: 8),
-                _filterChip('WhatsApp', NotifFilter.whatsapp, Icons.chat, cs, color: AppTheme.whatsAppGreen),
-                const SizedBox(width: 8),
-                _filterChip('Messaging', NotifFilter.messaging, Icons.message, cs, color: AppTheme.telegramBlue),
-                const SizedBox(width: 8),
-                _filterChip('Deleted', NotifFilter.deleted, Icons.delete_outline, cs, color: AppTheme.deletedRed),
-              ],
+              itemCount: dynamicFilters.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final f = dynamicFilters[index];
+                final selected = _selectedApp == f.id;
+                return FilterChip(
+                  label: Text('${f.label} ${f.count}', style: const TextStyle(fontSize: 12)),
+                  avatar: Icon(f.icon, size: 16, color: selected ? Colors.white : (f.color ?? cs.onSurfaceVariant)),
+                  selected: selected,
+                  onSelected: (_) {
+                    setState(() => _selectedApp = f.id);
+                    _loadNotifications();
+                  },
+                  selectedColor: f.color ?? cs.primary,
+                  showCheckmark: false,
+                  labelStyle: TextStyle(color: selected ? Colors.white : null),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                );
+              },
             ),
           ),
           const SizedBox(height: 8),
@@ -172,11 +260,11 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: _notifications.isEmpty
                 ? EmptyState(
-                    icon: _filter == NotifFilter.deleted ? Icons.delete_sweep : Icons.notifications_off,
-                    title: _filter == NotifFilter.deleted
+                    icon: _selectedApp == '_deleted' ? Icons.delete_sweep : Icons.notifications_off,
+                    title: _selectedApp == '_deleted'
                         ? 'No deleted notifications yet'
                         : 'No notifications captured',
-                    subtitle: _filter == NotifFilter.all
+                    subtitle: _selectedApp == null
                         ? 'Notifications will appear here as they arrive'
                         : 'Try changing the filter',
                   )
@@ -246,23 +334,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _filterChip(String label, NotifFilter filter, IconData icon, ColorScheme cs, {Color? color}) {
-    final selected = _filter == filter;
-    return FilterChip(
-      label: Text(label, style: TextStyle(fontSize: 12)),
-      avatar: Icon(icon, size: 16, color: selected ? Colors.white : (color ?? cs.onSurfaceVariant)),
-      selected: selected,
-      onSelected: (_) {
-        setState(() => _filter = filter);
-        _loadNotifications();
-      },
-      selectedColor: color ?? cs.primary,
-      showCheckmark: false,
-      labelStyle: TextStyle(color: selected ? Colors.white : null),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
-  }
-
   bool _isSameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
   String _dateHeader(DateTime dt) {
@@ -273,4 +344,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (date == today.subtract(const Duration(days: 1))) return 'YESTERDAY';
     return DateFormat('EEEE, MMM d').format(dt).toUpperCase();
   }
+}
+
+class _AppFilter {
+  final String? id;
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color? color;
+
+  _AppFilter({required this.id, required this.label, required this.count, required this.icon, this.color});
 }
