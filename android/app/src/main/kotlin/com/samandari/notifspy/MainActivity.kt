@@ -2,7 +2,9 @@ package com.samandari.notifspy
 
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -25,6 +27,28 @@ class MainActivity : FlutterFragmentActivity() {
                 "openPermissionSettings" -> {
                     openNotificationListenerSettings()
                     result.success(null)
+                }
+                "isServiceRunning" -> {
+                    result.success(NotifSpyListenerService.instance != null && NotifSpyListenerService.isConnected)
+                }
+                "isBatteryOptimized" -> {
+                    val pm = getSystemService(POWER_SERVICE) as PowerManager
+                    result.success(!pm.isIgnoringBatteryOptimizations(packageName))
+                }
+                "requestBatteryOptimization" -> {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    intent.data = Uri.parse("package:$packageName")
+                    startActivity(intent)
+                    result.success(null)
+                }
+                "rebindService" -> {
+                    try {
+                        val cn = ComponentName(this, NotifSpyListenerService::class.java)
+                        android.service.notification.NotificationListenerService.requestRebind(cn)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
                 }
                 else -> result.notImplemented()
             }

@@ -10,41 +10,31 @@ import 'package:notifspy/theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    await HiveService.init();
-  } catch (e) {
-    debugPrint('[NotifSpy] Hive init error: $e');
-  }
+  await HiveService.init();
 
   final themeService = ThemeService();
-  try {
-    await themeService.init();
-  } catch (e) {
-    debugPrint('[NotifSpy] Theme init error: $e');
-  }
+  await themeService.init();
 
   final listenerService = NotificationListenerService();
-  try {
-    await listenerService.init();
-  } catch (e) {
-    debugPrint('[NotifSpy] Listener init error: $e');
-  }
+  await listenerService.init();
 
-  bool hasPermission = false;
-  try {
-    hasPermission = await listenerService.isPermissionGranted();
-  } catch (e) {
-    debugPrint('[NotifSpy] Permission check error: $e');
-  }
+  final hasPermission = await listenerService.isPermissionGranted();
 
-  runApp(NotifSpyApp(themeService: themeService, hasPermission: hasPermission));
+  runApp(NotifSpyApp(
+    themeService: themeService,
+    hasPermission: hasPermission,
+  ));
 }
 
 class NotifSpyApp extends StatelessWidget {
   final ThemeService themeService;
   final bool hasPermission;
 
-  const NotifSpyApp({super.key, required this.themeService, required this.hasPermission});
+  const NotifSpyApp({
+    super.key,
+    required this.themeService,
+    required this.hasPermission,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +48,9 @@ class NotifSpyApp extends StatelessWidget {
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: theme.themeMode,
-            home: hasPermission ? const HomeScreen() : const PermissionScreen(),
+            home: hasPermission
+                ? const HomeScreen()
+                : const PermissionScreen(),
           );
         },
       ),

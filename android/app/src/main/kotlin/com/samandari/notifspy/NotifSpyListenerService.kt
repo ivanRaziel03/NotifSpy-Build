@@ -2,11 +2,14 @@ package com.samandari.notifspy
 
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 
 class NotifSpyListenerService : NotificationListenerService() {
 
     companion object {
+        private const val TAG = "NotifSpyListener"
         var instance: NotifSpyListenerService? = null
+        var isConnected: Boolean = false
         val postedNotifications = mutableListOf<Map<String, Any?>>()
         val removedNotifications = mutableListOf<Map<String, Any?>>()
         var onNotificationPosted: ((Map<String, Any?>) -> Unit)? = null
@@ -16,11 +19,27 @@ class NotifSpyListenerService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Log.d(TAG, "Service created")
     }
 
     override fun onDestroy() {
         instance = null
+        isConnected = false
+        Log.d(TAG, "Service destroyed")
         super.onDestroy()
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        isConnected = true
+        Log.d(TAG, "Listener connected to notification system")
+    }
+
+    override fun onListenerDisconnected() {
+        isConnected = false
+        Log.d(TAG, "Listener disconnected — requesting rebind")
+        requestRebind(android.content.ComponentName(this, NotifSpyListenerService::class.java))
+        super.onListenerDisconnected()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -56,10 +75,14 @@ class NotifSpyListenerService : NotificationListenerService() {
             "timestamp" to sbn.postTime
         )
 
-        synchronized(postedNotifications) {
-            postedNotifications.add(data)
+        val callback = onNotificationPosted
+        if (callback != null) {
+            callback.invoke(data)
+        } else {
+            synchronized(postedNotifications) {
+                postedNotifications.add(data)
+            }
         }
-        onNotificationPosted?.invoke(data)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
@@ -78,9 +101,13 @@ class NotifSpyListenerService : NotificationListenerService() {
             "timestamp" to System.currentTimeMillis()
         )
 
-        synchronized(removedNotifications) {
-            removedNotifications.add(data)
+        val callback = onNotificationRemoved
+        if (callback != null) {
+            callback.invoke(data)
+        } else {
+            synchronized(removedNotifications) {
+                removedNotifications.add(data)
+            }
         }
-        onNotificationRemoved?.invoke(data)
     }
 }

@@ -24,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _service = NotificationListenerService();
   String? _selectedApp;
   String _searchQuery = '';
@@ -34,28 +34,45 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _postedSub;
   StreamSubscription? _removedSub;
   StreamSubscription? _clearedSub;
+  bool _serviceAlive = true;
 
-  // Date range filter
   DateTimeRange? _dateRange;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadNotifications();
+    _checkServiceHealth();
     _postedSub = _service.onNotification.listen((_) => _loadNotifications());
-    _removedSub = _service.onNotificationRemoved.listen((_) => _loadNotifications());
+    _removedSub =
+        _service.onNotificationRemoved.listen((_) => _loadNotifications());
     _clearedSub = _service.onCleared.listen((_) => _loadNotifications());
-    // Run auto-cleanup on start
     _service.runAutoCleanup();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _postedSub?.cancel();
     _removedSub?.cancel();
     _clearedSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkServiceHealth();
+      _loadNotifications();
+    }
+  }
+
+  Future<void> _checkServiceHealth() async {
+    final alive = await _service.isServiceRunning();
+    if (!mounted) return;
+    setState(() => _serviceAlive = alive);
   }
 
   void _loadNotifications() {
@@ -255,7 +272,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          // Stats bar
+          if (!_serviceAlive)
+            _buildServiceWarning(cs),
           Container(
             margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -371,6 +389,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildServiceWarning(ColorScheme cs) {
+    return GestureDetector(
+      onTap: () async {
+        await _service.rebindService();
+        await Future.delayed(const Duration(seconds: 1));
+        _checkServiceHealth();
+      },
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: cs.error, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Notification listener is not running. Tap to restart.',
+                style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
+              ),
+            ),
+            Icon(Icons.refresh, color: cs.error, size: 18),
+          ],
+        ),
       ),
     );
   }

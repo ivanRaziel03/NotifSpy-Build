@@ -52,6 +52,12 @@ class CapturedNotification extends HiveObject {
   @HiveField(15)
   bool isGhostDelete = false;
 
+  @HiveField(16)
+  String? notificationKey;
+
+  @HiveField(17)
+  String? originalText;
+
   bool get isWhatsApp => packageName == 'com.whatsapp' || packageName == 'com.whatsapp.w4b';
   bool get isTelegram => packageName == 'org.telegram.messenger';
   bool get isMessaging => isWhatsApp || isTelegram || packageName.contains('sms') || packageName.contains('messenger');
@@ -72,5 +78,7 @@ class CapturedNotification extends HiveObject {
     'isFavorite': isFavorite,
     'mediaType': mediaType,
     'isGhostDelete': isGhostDelete,
+    'notificationKey': notificationKey,
+    'originalText': originalText,
   };
 }
